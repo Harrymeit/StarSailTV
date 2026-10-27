@@ -74,6 +74,7 @@ data class SearchItem(
     val year: String,
     val remarks: String,
     val sourceUrl: String,
+    val area: String = "",
 )
 
 data class VideoInfo(
@@ -99,13 +100,20 @@ class HttpError(val status: Int, val body: String) : Exception("HTTP $status")
 class Api(baseUrl: String) {
 
     val baseUrl: String = baseUrl.trimEnd('/')
-    private var cookie: String? = null
+    @Volatile private var cookie: String? = null
+    private val connections = java.util.Collections.synchronizedSet(mutableSetOf<HttpURLConnection>())
+    fun cancelRequests() { synchronized(connections) { connections.toList().forEach { it.disconnect() }; connections.clear() } }
 
     fun restoreCookie(value: String?) {
         cookie = value?.takeIf { it.isNotEmpty() }
     }
 
     fun currentCookie(): String? = cookie
+
+    fun metadataJson(path: String): JSONObject {
+        require(path.startsWith("/api/hot-list?") || path.startsWith("/api/douban?"))
+        return JSONObject(readBody(open(path)))
+    }
 
     private fun open(path: String): HttpURLConnection {
         val conn = URL(baseUrl + path).openConnection() as HttpURLConnection
@@ -114,10 +122,12 @@ class Api(baseUrl: String) {
         conn.instanceFollowRedirects = true
         conn.setRequestProperty("Accept", "application/json")
         cookie?.let { conn.setRequestProperty("Cookie", it) }
+        connections.add(conn)
         return conn
     }
 
     private fun readBody(conn: HttpURLConnection): String {
+        return try {
         val code = conn.responseCode
         if (code !in 200..299) {
             val err = try {
@@ -133,7 +143,8 @@ class Api(baseUrl: String) {
             .firstOrNull { it.key.equals("Set-Cookie", ignoreCase = true) }
             ?.value?.firstOrNull()
             ?.let { raw -> cookie = raw.substringBefore(';') }
-        return text
+        text
+        } finally { connections.remove(conn); conn.disconnect() }
     }
 
     fun status(): AppStatus {
@@ -204,6 +215,7 @@ class Api(baseUrl: String) {
                 year = o.optString("year", ""),
                 remarks = o.optString("remarks", ""),
                 sourceUrl = o.optString("sourceUrl", ""),
+                area = o.optString("area", ""),
             )
         }
         // 公共采集站经常挂，把「几个源无响应」透出来，否则用户只会觉得「结果怎么这么少」
@@ -262,6 +274,7 @@ class Api(baseUrl: String) {
      */
     fun fetchText(url: String): String {
         val conn = URL(url).openConnection() as HttpURLConnection
+        connections.add(conn)
         return try {
             conn.connectTimeout = 8000
             conn.readTimeout = 15000
@@ -269,6 +282,7 @@ class Api(baseUrl: String) {
             if (conn.responseCode !in 200..299) throw HttpError(conn.responseCode, "")
             conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
+            connections.remove(conn)
             conn.disconnect()
         }
     }
