@@ -1,6 +1,6 @@
 # 第三方依赖
 
-本项目在构建产物中打包了以下第三方库，均以 Apache License 2.0 授权。
+本项目在构建产物中打包了以下第三方库，许可分别列出。
 随 APK 分发时应保留本文件与对应的许可证声明。
 
 | 库 | 版本 | 许可 | 地址 |
@@ -9,6 +9,9 @@
 | ZXing Core | 3.5.3 | Apache-2.0 | https://github.com/zxing/zxing |
 | Kotlin Standard Library | 2.x | Apache-2.0 | https://github.com/JetBrains/kotlin |
 | kotlinx.coroutines | 1.10.2 | Apache-2.0 | https://github.com/Kotlin/kotlinx.coroutines |
+| pinyin4j（belerweb 发行版） | 2.5.1 | BSD（按 Maven POM 声明） | https://github.com/belerweb/pinyin4j |
+
+JUnit、Robolectric、org.json 的额外测试版本仅用于测试，不随正式 APK 打包。
 
 Apache License 2.0 全文：https://www.apache.org/licenses/LICENSE-2.0
 

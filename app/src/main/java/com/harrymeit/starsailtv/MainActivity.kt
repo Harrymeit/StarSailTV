@@ -220,6 +220,9 @@ class MainActivity : Activity() {
         root.setBackgroundColor(Color.parseColor("#0b101a"))
         setContentView(root)
         hideSystemUi()
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBackNavigation() }
+        }
         metadataRepository = MetadataRepository(this, { api }, { prefs.sources() })
         discovery = DiscoveryController(this, scope, prefs, metadataRepository, { imageLoader },
             { view, screen -> currentScreen = screen; setScreen(view, false) },
@@ -268,24 +271,27 @@ class MainActivity : Activity() {
      * 只有最外层（推荐首页）才真的退出。以前任何界面按返回都直接杀掉应用。
      */
     @Suppress("DEPRECATION")
-    override fun onBackPressed() {
+    @android.annotation.SuppressLint("GestureBackNavigation") // API <= 32 fallback; API 33+ uses the callback registered above.
+    override fun onBackPressed() = handleBackNavigation()
+
+    private fun handleBackNavigation() {
         when (currentScreen) {
-            "discover", "search", "catalog", "metadataDetail" -> if (!discovery.back()) super.onBackPressed()
+            "discover", "search", "catalog", "metadataDetail" -> if (!discovery.back()) finish()
             "files" -> showSources()
             "qradd" -> { qrServer?.stop(); qrServer = null; showSources() }
             "results" -> discovery.resume()
-            "serversettings" -> showSetup()
+            "serversettings" -> if (prefs.serverUrl.isEmpty()) finish() else showSetup()
             "detail" -> if (detailOrigin == "results") showResults() else discovery.resume()
             "live", "setup", "history" -> discovery.resume()
             "sources" -> if (sourcesOrigin == "setup") showSetup() else showRecommend()
-            "home", "recommend" -> super.onBackPressed()
+            "home", "recommend" -> finish()
             // 导入流程内的页面：逐级退回上一级，而不是退出 App
             "input" -> showAddSource()
             "manualadd" -> showAddSource()
             "addsource" -> showSources()
             "import" -> showSources()
             "homebar", "playsettings" -> showSetup()
-            "boot" -> super.onBackPressed()
+            "boot" -> finish()
             else -> showRecommend()
         }
     }
@@ -945,7 +951,7 @@ class MainActivity : Activity() {
 
     private fun showUpdateDetail() {
         val notes = prefs.latestNotes.ifEmpty { "（这个版本没有提供更新说明）" }
-        val url = prefs.latestUrl.ifEmpty { "https://github.com/AresCNZJ/DpadTV/releases" }
+        val url = prefs.latestUrl.ifEmpty { "https://github.com/Harrymeit/StarSailTV/releases" }
 
         // 左栏：更新说明，内容长时可滚动
         val notesView = TextView(this).apply {
@@ -2132,151 +2138,6 @@ class MainActivity : Activity() {
 
     /* --------------------------------------------------------------- 热门搜索 */
 
-    /** 搜索页热门搜索：按类型缓存，取首页排行榜前 10 条 */
-    private val hotSearchTitles = mutableMapOf<String, List<String>>()
-
-    private fun ensureHotSearch() {
-        if (hotSearchTitles.size >= 3) return
-        scope.launch {
-            val specs = listOf("movie" to "热门", "tv" to "热门", "show" to "综艺")
-            for ((type, tag) in specs) {
-                if (hotSearchTitles.containsKey(type)) continue
-                val items = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching { api.douban(type, tag, 0, 10) }.getOrDefault(emptyList())
-                }
-                hotSearchTitles[type] = items.map { it.title }.filter { it.isNotBlank() }
-            }
-            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                if (currentScreen == "home") showHome()
-            }
-        }
-    }
-    private fun legacySearch() {
-        currentScreen = "home"
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(48), dp(28), dp(48), dp(28))
-        }
-
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        col.addView(brandRow(false))
-        val keywordField = field("输入影片名称…")
-        keywordField.imeOptions = EditorInfo.IME_ACTION_SEARCH
-        header.addView(keywordField, LinearLayout.LayoutParams(dp(580), dp(48)))
-        header.addView(button("搜索", primary = true) { doSearch(keywordField.text.toString()) })
-        header.addView(button("清空历史") { prefs.clearSearchHistory(); showHome() })
-        col.addView(hScroll(header))
-
-        // 热门搜索：电影 / 剧集 / 综艺 各取排行榜前 10，点一下直接搜
-        ensureHotSearch()
-        for ((type, label) in listOf(
-            "movie" to "热门电影",
-            "tv" to "热门剧集",
-            "show" to "热门综艺",
-        )) {
-            val titles = hotSearchTitles[type].orEmpty()
-            if (titles.isEmpty()) continue
-            col.addView(hintText(label))
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            titles.forEach { title -> row.addView(button(title) { doSearch(title) }) }
-            col.addView(hScroll(row))
-        }
-
-        val statusRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        statusRow.addView(
-            TextView(this).apply {
-                setText(
-                    "片源 ${prefs.sources().size} 个 · 服务器 ${api.baseUrl}" +
-                        if (sourceFilter.isEmpty()) "" else " · 只看：$sourceFilter",
-                )
-                setTextColor(Color.parseColor("#64748b"))
-                setTextSize(13f)
-                setPadding(0, dp(6), dp(12), dp(8))
-            },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        if (lastResults.isNotEmpty()) {
-            statusRow.addView(
-                button(if (sourceFilter.isEmpty()) "来源筛选" else "来源：" + sourceFilter.take(8)) {
-                    val names = listOf("全部来源") + lastResults.map { it.sourceName }.distinct().sorted()
-                    AlertDialog.Builder(this)
-                        .setTitle("只看某个采集站的结果")
-                        .setItems(names.toTypedArray()) { _, which ->
-                            sourceFilter = if (which == 0) "" else names[which]
-                            showHome()
-                        }
-                        .show()
-                },
-            )
-        }
-        col.addView(statusRow)
-
-        // 没有结果时把「搜索历史」放在这里：电视遥控器打字太难，
-        // 重搜一部之前看过的片子应该是一次点击的事。
-        val history = prefs.searchHistory()
-        val rows: List<String>
-        val onRow: (Int) -> Unit
-        if (lastResults.isEmpty()) {
-            if (history.isEmpty()) {
-                rows = listOf("（还没有搜索记录，输入片名开始）")
-                onRow = { }
-            } else {
-                rows = history.map { "最近搜索 · $it" }
-                onRow = { idx ->
-                    if (idx == history.size) {
-                        prefs.clearSearchHistory()
-                        showHome()
-                    } else {
-                        doSearch(history[idx])
-                    }
-                }
-            }
-        } else {
-            // 同一部片在多个采集站都有结果，平铺会刷出一堆重复行（「流浪地球」7 条里 5 条是同一部片）。
-            // 按片名收成一行，来源并列显示；点进去后详情页的「换源」可以切换。
-            val visible = if (sourceFilter.isEmpty()) {
-                lastResults
-            } else {
-                lastResults.filter { it.sourceName == sourceFilter }
-            }
-            val groups = visible.groupBy { it.name }
-            val titles = groups.keys.toList()
-            rows = titles.map { title ->
-                val group = groups.getValue(title)
-                val srcs = group.map { it.sourceName }.distinct()
-                val remark = group.firstOrNull { it.remarks.isNotEmpty() }?.remarks.orEmpty()
-                buildString {
-                    append(title)
-                    append("    ")
-                    append(srcs.joinToString(" / "))
-                    if (remark.isNotEmpty()) {
-                        append("  ·  ")
-                        append(remark)
-                    }
-                }
-            }
-            onRow = { idx -> openDetail(groups.getValue(titles[idx]).first()) }
-        }
-
-        val listView = newList()
-        bindList(listView, rows, onItem = onRow)
-        col.addView(listView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-
-        keywordField.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                doSearch(keywordField.text.toString())
-                true
-            } else false
-        }
-
-        setScreen(col)
-        if (lastResults.isEmpty()) keywordField.requestFocus() else listView.requestFocus()
-    }
-
     private fun showHome() = discovery.search()
     private fun showRecommend() = discovery.home()
 
@@ -2744,189 +2605,6 @@ class MainActivity : Activity() {
     }
 
     /* ------------------------------------------------------------ 推荐首页 */
-
-    private fun legacyRecommend() {
-        currentScreen = "recommend"
-        if (recommendItems.isEmpty()) {
-            loadRecommend()
-            return
-        }
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(48), dp(24), dp(48), dp(20))
-        }
-        val brandBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        brandBar.addView(
-            brandRow(),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        updateCapsule()?.let { brandBar.addView(it) }
-        col.addView(brandBar)
-        col.addView(titleText(
-            (when {
-                recommendTag == "综艺" -> "豆瓣 · 综艺"
-                mediaType == "tv" -> "豆瓣 · " + recommendTag + " · 剧集"
-                else -> "豆瓣 · " + recommendTag + " · 电影"
-            }) +
-                "  ·  第 ${recommendPage + 1} 批，共 ${recommendItems.size} 条",
-            17f,
-        ))
-
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val hiddenIds = prefs.homeBarHidden()
-        for (id in prefs.homeBarOrder()) {
-            if (hiddenIds.contains(id)) continue
-            when (id) {
-                "movie" -> bar.addView(button("电影") { mediaType = "movie"; recommendTag = "热门"; recommendItems = emptyList(); recommendPage = 0; noMoreRecommend = false; isLoadingMore = false; showRecommend() })
-                "tv" -> bar.addView(button("剧集") { mediaType = "tv"; recommendTag = "热门"; recommendItems = emptyList(); recommendPage = 0; noMoreRecommend = false; isLoadingMore = false; showRecommend() })
-                "show" -> bar.addView(button("综艺") { mediaType = "show"; recommendTag = "综艺"; recommendItems = emptyList(); recommendPage = 0; noMoreRecommend = false; isLoadingMore = false; showRecommend() })
-                "search" -> bar.addView(button("搜索") { showHome() })
-                "live" -> bar.addView(button("直播") { liveChannels = emptyList(); showLive() })
-                "history" -> bar.addView(button("继续") { showHistoryCards() })
-                "sources" -> bar.addView(button("片源") { showSources() })
-                "setup" -> bar.addView(button("设置") { showSetup() })
-            }
-        }
-        col.addView(hScroll(bar))
-        homeBar = bar
-
-        val grid = newGrid().apply {
-            numColumns = 6
-            horizontalSpacing = dp(14)
-            verticalSpacing = dp(14)
-            setPadding(0, dp(12), 0, 0)
-        }
-        grid.adapter = recommendAdapter()
-            if (pendingGridSelection >= 0) {
-                grid.setSelection(pendingGridSelection)
-                pendingGridSelection = -1
-                suppressAutoLoad = true
-            }
-            grid.setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
-                override fun onScrollStateChanged(view: android.widget.AbsListView, state: Int) = Unit
-                override fun onScroll(
-                    view: android.widget.AbsListView,
-                    firstVisibleItem: Int,
-                    visibleItemCount: Int,
-                    totalItemCount: Int,
-                ) {
-                    lastVisibleIndex = firstVisibleItem
-                    if (suppressAutoLoad) {
-                        suppressAutoLoad = false
-                        return
-                    }
-                    // 滚到末尾前两行时自动加载下一批
-                    if (!isLoadingMore && !noMoreRecommend &&
-                        firstVisibleItem + visibleItemCount >= totalItemCount - 2
-                    ) {
-                        loadRecommend(true)
-                    }
-                }
-            })
-            // 顶部栏在 HorizontalScrollView 内，焦点搜索找不到下方网格，这里直接接管
-            for (bi in 0 until bar.childCount) {
-                bar.getChildAt(bi).setOnKeyListener { _, code, ev ->
-                    if (code == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
-                        ev.action == android.view.KeyEvent.ACTION_DOWN
-                    ) {
-                        grid.requestFocus()
-                        true
-                    } else {
-                        false
-                    }
-                }
-            }
-            // 网格已在第一行时，上方向键回到顶部按钮
-            grid.setOnKeyListener { _, code, ev ->
-                if (code == android.view.KeyEvent.KEYCODE_DPAD_UP &&
-                    ev.action == android.view.KeyEvent.ACTION_DOWN &&
-                    grid.selectedItemPosition < grid.numColumns
-                ) {
-                    if (bar.childCount > 0) bar.getChildAt(0).requestFocus()
-                    true
-                } else {
-                    false
-                }
-            }
-        grid.setOnItemClickListener { _, _, pos, _ ->
-            recommendItems.getOrNull(pos)?.let { doSearch(it.title) }
-        }
-        col.addView(grid, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-
-        setScreen(col)
-        grid.requestFocus()
-    }
-
-    private fun loadRecommend(more: Boolean = false) {
-        if (more && (isLoadingMore || noMoreRecommend)) return
-        isLoadingMore = true
-        val page = if (more) recommendPage + 1 else 0
-        runApi(if (more) "加载更多…" else "正在加载推荐…", {
-            api.douban(mediaType, recommendTag, page * 48, 48)
-        }, { items ->
-            isLoadingMore = false
-            if (items.isEmpty()) {
-                if (more) {
-                    noMoreRecommend = true
-                    toast("已经到底了")
-                } else {
-                    toast("没取到推荐，直接用搜索吧")
-                    showHome()
-                }
-            } else {
-                recommendItems = if (more) recommendItems + items else items
-                recommendPage = page
-                // 追加时记住当前滚动位置，重建网格后回到原处，避免"跳回顶部"又触发加载
-                if (more) pendingGridSelection = lastVisibleIndex
-                showRecommend()
-            }
-        })
-    }
-
-    /** 海报网格：ImageView 复用时要校验 URL，否则快速滚动会串图。 */
-    private fun recommendAdapter(): BaseAdapter = object : BaseAdapter() {
-        override fun getCount() = recommendItems.size
-        override fun getItem(position: Int): Any = recommendItems[position]
-        override fun getItemId(position: Int) = position.toLong()
-
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val cell = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(6), dp(6), dp(6), dp(6))
-                addView(
-                    ImageView(this@MainActivity).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, dp(210))
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        setBackgroundColor(Color.parseColor("#1a2233"))
-                    },
-                )
-                addView(
-                    TextView(this@MainActivity).apply {
-                        setTextSize(13f)
-                        setTextColor(Color.parseColor("#e5e7eb"))
-                        maxLines = 2
-                        setPadding(0, dp(6), 0, 0)
-                    },
-                )
-            }
-            val item = recommendItems[position]
-            val img = cell.getChildAt(0) as ImageView
-            val label = cell.getChildAt(1) as TextView
-            label.text = if (item.rating.isEmpty()) item.title else "${item.title}  ★${item.rating}"
-            img.tag = item.cover
-            img.setImageBitmap(null)
-            imageLoader.load(item.cover, dp(180), dp(260)) { bmp ->
-                if (img.tag == item.cover) img.setImageBitmap(bmp)
-            }
-            cell.setOnClickListener { doSearch(item.title) }
-            return cell
-        }
-    }
 
     private fun simpleAdapter(items: List<String>, onItem: (Int) -> Unit): BaseAdapter =
         object : BaseAdapter() {

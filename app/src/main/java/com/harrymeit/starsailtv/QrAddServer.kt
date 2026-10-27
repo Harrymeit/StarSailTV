@@ -178,9 +178,9 @@ class QrAddServer(
 
     private fun page(): String = """
 <!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>
-<title>DpadTV 添加片源</title>
+<title>星帆 TV 添加片源</title>
 <body style="font:16px/1.6 system-ui;padding:20px;background:#0b101a;color:#e5e7eb;max-width:760px;margin:0 auto">
-<h2 style="margin:0 0 4px">DpadTV 添加片源</h2>
+<h2 style="margin:0 0 4px">星帆 TV 添加片源</h2>
 <p style="color:#94a3b8;margin:0 0 18px">
   两种方式：<b>选文件</b>（手机上直接挑 sources.json），或者 <b>粘贴文本</b>，然后提交。
 </p>

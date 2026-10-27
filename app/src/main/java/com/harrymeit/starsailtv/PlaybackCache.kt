@@ -14,6 +14,7 @@ import java.io.File
  *
  * 约束：SimpleCache 在一个进程里只能有一个实例（内部有文件锁），所以做成单例。
  */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object PlaybackCache {
 
     /** 默认上限 2GB；实际值可在设置里改（Prefs.cacheLimitMb） */

@@ -28,7 +28,7 @@ object UpdateChecker {
                 val conn = URL(API).openConnection() as HttpURLConnection
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
-                conn.setRequestProperty("User-Agent", "DpadTV-Android")
+                conn.setRequestProperty("User-Agent", "StarSailTV-Android")
                 conn.setRequestProperty("Accept", "application/vnd.github+json")
                 if (conn.responseCode == 200) {
                     val body = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }

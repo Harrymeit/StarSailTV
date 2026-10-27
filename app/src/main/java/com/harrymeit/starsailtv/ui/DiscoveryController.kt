@@ -144,9 +144,10 @@ class DiscoveryController(
             statusLabel?.text = "正在更新目录…本地缓存仍可浏览"
             try {
                 repository.refresh(more)
+                refreshJob = null
                 if (attached) { leave(); render() }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { if (attached) statusLabel?.text = "网络异常，保留缓存 · 可点击刷新重试" }
+            catch (e: Exception) { refreshJob = null; if (attached) statusLabel?.text = "网络异常，保留缓存 · 可点击刷新重试" }
         }
     }
 }

@@ -48,6 +48,10 @@ class CatalogTest {
         assertEquals(2, CatalogQueries.merge(listOf(a, b)).single().sourceRefs.size)
     }
     @Test fun stableTiesAreDeterministic() { assertEquals(listOf("a", "b"), CatalogQueries.sorted(listOf(film("b"), film("a")), CatalogFilter()).map { it.mediaId }) }
+    @Test fun largeCacheMergesWithoutDroppingDistinctFilms() {
+        val items = (1..6000).map { film(it.toString(), 2024) }
+        assertEquals(6000, CatalogQueries.merge(items + items).size)
+    }
     @Test fun areaAndGenreAndYearAllFilter() {
         val a = film("a", 2025).copy(region = "中国大陆", genres = listOf("科幻"))
         assertEquals(listOf(a), CatalogQueries.sorted(listOf(a, film("b", 2025)), CatalogFilter(region = "中国", genre = "科幻", year = "2025")))

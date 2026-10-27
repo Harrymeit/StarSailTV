@@ -41,6 +41,7 @@ import androidx.media3.ui.PlayerView
  * 片名默认隐藏，只在暂停、操作栏打开、或出错时出现。
  * 缓冲时在「缓冲中…」下面显示实时网速（按累计字节差分计算）。
  */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class PlayerActivity : Activity() {
 
     private var coverUrl: String = ""
@@ -135,6 +136,9 @@ class PlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBackNavigation() }
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemUi()
 
@@ -310,7 +314,7 @@ class PlayerActivity : Activity() {
 
         // 分片级磁盘缓存：看过的片段落盘，回拖/重看不再重复下载
         val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setUserAgent("DpadTV-Android")
+            .setUserAgent("StarSailTV-Android")
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
         val cacheFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
@@ -682,6 +686,14 @@ class PlayerActivity : Activity() {
             )
     }
 
+    @Suppress("DEPRECATION")
+    @android.annotation.SuppressLint("GestureBackNavigation") // Legacy Fire OS / API <= 32.
+    override fun onBackPressed() = handleBackNavigation()
+
+    private fun handleBackNavigation() {
+        if (isActionBarVisible()) hideActions.run() else finish()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val p = player ?: return super.onKeyDown(keyCode, event)
 
@@ -691,7 +703,6 @@ class PlayerActivity : Activity() {
                 handler.removeCallbacks(hideActions)
                 handler.postDelayed(hideActions, HIDE_ACTIONS_DELAY_MS)
                 when (keyCode) {
-                    KeyEvent.KEYCODE_BACK,
                     KeyEvent.KEYCODE_MENU,
                     KeyEvent.KEYCODE_M,
                     -> {
