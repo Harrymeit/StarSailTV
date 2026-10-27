@@ -11,18 +11,18 @@ val localProps = Properties().apply {
 }
 
 android {
-    namespace = "com.dpadtv.client"
+    namespace = "com.harrymeit.starsailtv"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.dpadtv.client"
+        applicationId = "com.harrymeit.starsailtv"
         // 23 = Android 6.0：Media3 的下限之上，老盒子都能装
         minSdk = 23
         targetSdk = 37
-        versionCode = 102
-        versionName = "1.2.0"
+        versionCode = 10001
+        versionName = "1.0.0"
     }
 
     buildTypes {
@@ -60,9 +60,16 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
+    implementation("com.belerweb:pinyin4j:2.5.1")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
+    testImplementation("org.robolectric:robolectric:4.17")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // 原生播放：ExoPlayer 对 HLS 的容错远好于 MediaPlayer，H.265 取决于 SoC 硬解
     implementation("androidx.media3:media3-exoplayer:1.5.1")

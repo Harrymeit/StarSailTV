@@ -14,9 +14,9 @@
     <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
 
     <application
-        android:allowBackup="true"
-        android:banner="@drawable/app_banner"
-        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:banner="@drawable/starsail_banner"
+        android:icon="@drawable/starsail_icon"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"

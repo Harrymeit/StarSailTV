@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import android.os.Handler
 import android.os.Looper
@@ -14,7 +14,7 @@ import java.net.URL
  */
 object UpdateChecker {
 
-    private const val API = "https://api.github.com/repos/AresCNZJ/DpadTV/releases/latest"
+    private const val API = "https://api.github.com/repos/Harrymeit/StarSailTV/releases/latest"
 
     data class ReleaseInfo(
         val tag: String,

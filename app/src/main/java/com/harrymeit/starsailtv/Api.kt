@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import org.json.JSONArray
 import org.json.JSONObject

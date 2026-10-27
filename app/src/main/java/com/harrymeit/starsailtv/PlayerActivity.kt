@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import android.app.Activity
 import android.os.Bundle

@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -331,11 +331,8 @@ class MainActivity : Activity() {
         // 字标：Dpad 白 + TV 高亮
         row.addView(
             TextView(this).apply {
-                val text = SpannableString("DpadTV")
-                text.setSpan(ForegroundColorSpan(TEXT_COLOR), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                text.setSpan(ForegroundColorSpan(ACCENT), 4, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                text.setSpan(StyleSpan(Typeface.BOLD), 0, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                setText(text)
+                setText("星帆 TV")
+                setTypeface(null, Typeface.BOLD)
                 setTextSize(23f)
                 setPadding(dp(10), 0, dp(12), 0)
                 gravity = Gravity.CENTER_VERTICAL

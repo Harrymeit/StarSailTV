@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,7 +17,9 @@ import java.util.concurrent.Executors
  */
 class ImageLoader(private val api: Api) {
 
-    private val cache = LruCache<String, Bitmap>(160)
+    private val cache = object : LruCache<String, Bitmap>(16 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
     private val pool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
@@ -56,10 +58,11 @@ class ImageLoader(private val api: Api) {
     }
     /** 清空内存中的海报缓存，返回清掉的张数 */
     fun clearCache(): Int {
-        val n = cache.size()
+        val n = cache.snapshot().size
         cache.evictAll()
         return n
     }
 
-    fun cacheSize(): Int = cache.size()
+    fun cacheSize(): Int = cache.snapshot().size
+    fun close() { pool.shutdownNow(); main.removeCallbacksAndMessages(null); cache.evictAll() }
 }

@@ -1,4 +1,4 @@
-package com.dpadtv.client
+package com.harrymeit.starsailtv
 
 import android.content.Context
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
