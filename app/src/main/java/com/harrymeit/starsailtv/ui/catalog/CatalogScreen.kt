@@ -49,6 +49,10 @@ class CatalogScreen(private val ui: TvComponents) {
         grid.selector = android.graphics.drawable.StateListDrawable().apply { addState(intArrayOf(android.R.attr.state_focused), android.graphics.drawable.GradientDrawable().apply { setColor(0x2271E6D3); setStroke(ui.dp(3), ui.accent) }); addState(intArrayOf(android.R.attr.state_pressed), android.graphics.drawable.ColorDrawable(ui.accent)) }
         grid.setDrawSelectorOnTop(true)
         grid.setOnItemClickListener { _, _, pos, _ -> selectedIndex = pos; onMedia(result.items[pos]) }
+        grid.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) { selectedIndex = position }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
         grid.setSelection(selectedIndex.coerceIn(0, (result.items.size - 1).coerceAtLeast(0)))
         column.addView(grid, LinearLayout.LayoutParams(-1, 0, 1f))
         val paging = ui.row()

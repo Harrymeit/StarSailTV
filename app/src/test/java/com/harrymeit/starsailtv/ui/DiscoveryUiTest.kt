@@ -93,4 +93,11 @@ class DiscoveryUiTest {
         assertEquals("earth", two.favorites().single().mediaId)
         assertFalse(two.toggleFavorite(films[0])); assertTrue(two.favorites().isEmpty())
     }
+    @Test fun changingEnabledSourcesDoesNotLoseFavorites() {
+        val api = Api("http://127.0.0.1:9")
+        var sources = listOf(SourceConfig("A", "https://a"))
+        val repository = MetadataRepository(activity, { api }, { sources })
+        repository.toggleFavorite(films[0]); sources = sources + SourceConfig("B", "https://b")
+        assertEquals("earth", repository.favorites().single().mediaId)
+    }
 }

@@ -42,6 +42,11 @@ class CatalogTest {
         val merged = CatalogQueries.merge(listOf(a, b)).single()
         assertEquals(2020, merged.year); assertEquals(9.0, merged.doubanRating!!, 0.0)
     }
+    @Test fun verifiedIdentityCanPromoteUnknownCategory() {
+        val a = Media("a", "作品", doubanId = "123")
+        val b = a.copy(mediaId = "b", category = MediaCategory.MOVIE)
+        assertEquals(MediaCategory.MOVIE, CatalogQueries.merge(listOf(a, b)).single().category)
+    }
     @Test fun matchingKnownYearMergesDifferentSourceIds() {
         val a = Media("a", "同名片", year = 2020, sourceRefs = listOf(SourceRef("A", "https://a", "1")))
         val b = a.copy(mediaId = "b", doubanId = "123", sourceRefs = listOf(SourceRef("B", "https://b", "9")))

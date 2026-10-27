@@ -2,7 +2,7 @@
 
 ## 已自动验证
 
-最终执行 `testDebugUnitTest`（含真实服务契约测试）、`assembleDebug`、`lintDebug`：32 项测试通过，0 失败、0 跳过；lint 0 错误、32 条警告（主要为本地化与已有 API 提醒）。APK 的 v1/v2 签名验证通过；调试签名，非商店发行签名。
+最终执行 `testDebugUnitTest`（含真实服务契约测试）、`assembleDebug`、`lintDebug`：34 项测试通过，0 失败、0 跳过；lint 0 错误、32 条警告（主要为本地化与已有 API 提醒）。APK 的 v1/v2 签名验证通过；调试签名，非商店发行签名。
 
 - 原版 APK 成功构建，基线 APK 保存在本地 `dist/`。
 - 独立名称、矢量图标、横幅、包名；更新检查指向独立 Fork。

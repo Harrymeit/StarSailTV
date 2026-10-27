@@ -18,6 +18,7 @@ object CatalogQueries {
             val old = result[key]
             result[key] = if (old == null) item else old.copy(
                 year = old.year ?: item.year,
+                category = if (old.category == MediaCategory.UNKNOWN) item.category else old.category,
                 aliases = (old.aliases + item.aliases).distinct(),
                 genres = (old.genres + item.genres).distinct(),
                 region = old.region.ifEmpty { item.region },

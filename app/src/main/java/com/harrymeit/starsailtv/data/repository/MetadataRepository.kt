@@ -21,13 +21,17 @@ class MetadataRepository(context: Context, private val api: () -> Api, private v
     private var identity = ""
     private var snapshot = CatalogSnapshot(emptyList())
     private var favorites = emptyList<Media>()
+    private fun favoriteFile(): File {
+        val serverId = MessageDigest.getInstance("SHA-256").digest(api().baseUrl.toByteArray()).joinToString("") { "%02x".format(it) }.take(20)
+        return File(directory, "$serverId-favorites.json")
+    }
     private fun key(): String = MessageDigest.getInstance("SHA-256").digest((api().baseUrl + sources().filter { it.enabled && !it.isAdult }.map { it.url }.sorted().joinToString()).toByteArray()).joinToString("") { "%02x".format(it) }.take(20)
     private fun initialize() {
         val id = key()
         if (id == identity) return
         identity = id
         snapshot = runCatching { CatalogCodec.decode(File(directory, "$id.json").readText()) }.getOrDefault(CatalogSnapshot(emptyList()))
-        favorites = runCatching { val a = JSONArray(File(directory, "$id-favorites.json").readText()); (0 until a.length()).map { CatalogCodec.parse(a.getJSONObject(it)) } }.getOrDefault(emptyList())
+        favorites = runCatching { val a = JSONArray(favoriteFile().readText()); (0 until a.length()).map { CatalogCodec.parse(a.getJSONObject(it)) } }.getOrDefault(emptyList())
     }
     fun cached(): CatalogSnapshot { initialize(); return snapshot }
     fun favorites(): List<Media> { initialize(); return favorites }
@@ -35,7 +39,7 @@ class MetadataRepository(context: Context, private val api: () -> Api, private v
     fun toggleFavorite(m: Media): Boolean {
         initialize(); val add = !isFavorite(m)
         favorites = if (add) (listOf(m) + favorites).take(200) else favorites.filterNot { it.mediaId == m.mediaId }
-        File(directory, "$identity-favorites.json").writeText(JSONArray().apply { favorites.forEach { put(CatalogCodec.media(it)) } }.toString())
+        favoriteFile().writeText(JSONArray().apply { favorites.forEach { put(CatalogCodec.media(it)) } }.toString())
         return add
     }
     fun ingestSearch(items: List<SearchItem>) {
