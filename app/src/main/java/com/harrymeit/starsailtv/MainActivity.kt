@@ -39,6 +39,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import com.harrymeit.starsailtv.data.repository.MetadataRepository
+import com.harrymeit.starsailtv.data.model.Media
+import com.harrymeit.starsailtv.ui.DiscoveryController
 
 /**
  * 原生客户端主界面。刻意不用 XML 布局、不引 AppCompat/Leanback：
@@ -52,6 +56,11 @@ class MainActivity : Activity() {
     private lateinit var api: Api
     private lateinit var imageLoader: ImageLoader
     private lateinit var root: FrameLayout
+    private lateinit var metadataRepository: MetadataRepository
+    private lateinit var discovery: DiscoveryController
+    private val searchCache = linkedMapOf<String, Pair<Long, SearchResult>>()
+    private var detailOrigin = "results"
+    private var resultsSelection = 0
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
 
@@ -211,12 +220,20 @@ class MainActivity : Activity() {
         root.setBackgroundColor(Color.parseColor("#0b101a"))
         setContentView(root)
         hideSystemUi()
+        metadataRepository = MetadataRepository(this, { api }, { prefs.sources() })
+        discovery = DiscoveryController(this, scope, prefs, metadataRepository, { imageLoader },
+            { view, screen -> currentScreen = screen; setScreen(view, false) },
+            { doSearch(it) }, { findMedia(it) },
+            { playFromList(listOf(it.playUrl), 0, it.title, it.cover) },
+            { showHistoryCards() }, { showSetup() }, { showSources() }, { showLive() })
 
         if (prefs.serverUrl.isEmpty()) showSetup() else showBoot()
     }
 
     override fun onDestroy() {
         qrServer?.stop()
+        api.cancelRequests()
+        imageLoader.close()
         scope.cancel()
         super.onDestroy()
     }
@@ -253,11 +270,13 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         when (currentScreen) {
+            "discover", "search", "catalog", "metadataDetail" -> if (!discovery.back()) super.onBackPressed()
             "files" -> showSources()
             "qradd" -> { qrServer?.stop(); qrServer = null; showSources() }
-            "results" -> showRecommend()
+            "results" -> discovery.resume()
             "serversettings" -> showSetup()
-            "detail", "live", "setup", "history" -> showRecommend()
+            "detail" -> if (detailOrigin == "results") showResults() else discovery.resume()
+            "live", "setup", "history" -> discovery.resume()
             "sources" -> if (sourcesOrigin == "setup") showSetup() else showRecommend()
             "home", "recommend" -> super.onBackPressed()
             // 导入流程内的页面：逐级退回上一级，而不是退出 App
@@ -295,6 +314,7 @@ class MainActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun setScreen(view: View, focusFirst: Boolean = true) {
+        if (::discovery.isInitialized && currentScreen !in listOf("discover", "search", "catalog", "metadataDetail")) discovery.leave()
         root.removeAllViews()
         root.addView(view, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -440,6 +460,7 @@ class MainActivity : Activity() {
             .setCancelable(true)
             .setOnCancelListener {
                 job?.cancel()
+                api.cancelRequests()
                 busyDialog = null
                 toast("已取消")
             }
@@ -538,6 +559,7 @@ class MainActivity : Activity() {
 
     /** 统一切到后台线程调用 API，异常在 UI 线程上提示。 */
     private fun <T> runApi(loading: String? = "加载中…", block: () -> T, then: (T) -> Unit) {
+        if (job?.isActive == true) api.cancelRequests()
         job?.cancel()
         if (loading != null) progress(loading)
         job = scope.launch {
@@ -545,6 +567,8 @@ class MainActivity : Activity() {
                 val result = withContext(Dispatchers.IO) { block() }
                 dismissProgress()
                 then(result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 dismissProgress()
                 val msg = describe(e)
@@ -859,13 +883,13 @@ class MainActivity : Activity() {
         val latest = prefs.latestTag
         val hasNew = UpdateChecker.isNewer(latest, BuildConfig.VERSION_NAME)
         val devTag = if (BuildConfig.TEST_BUILD) "（测试版）" else ""
-        val head = "DpadTV v" + BuildConfig.VERSION_NAME + devTag + if (hasNew) "  •  有新版本 $latest" else ""
-        val tail = "\n项目主页  github.com/AresCNZJ/DpadTV\n" +
+        val head = "星帆 TV v" + BuildConfig.VERSION_NAME + devTag + if (hasNew) "  •  有新版本 $latest" else ""
+        val tail = "\n项目主页  github.com/Harrymeit/StarSailTV\n基于 DpadTV 的非官方修改版 · GPL-3.0 · 原作 AresCNZJ/DpadTV\n" +
             "免责声明：本应用仅为聚合客户端，不提供、不存储任何音视频内容，所有内容均来自用户自行配置的第三方接口。"
         val span = SpannableString(head + tail)
         if (hasNew) {
             // 版本号后面加红点 + 提示，用警示色强调
-            val start = ("DpadTV v" + BuildConfig.VERSION_NAME).length
+            val start = ("星帆 TV v" + BuildConfig.VERSION_NAME).length
             span.setSpan(
                 ForegroundColorSpan(0xFFEF4444.toInt()),
                 start,
@@ -1213,7 +1237,7 @@ class MainActivity : Activity() {
         col.addView(button("片源管理", primary = true) { showSources() })
         col.addView(button("播放设置") { showPlaySettings() })
         col.addView(button("清理缓存") { showClearCache() })
-        col.addView(button("首页按钮排序") { showHomeBarSettings() })
+        col.addView(hintText("星帆 TV 使用固定导航：首页 / 分类 / 搜索 / 历史 / 设置"))
         col.addView(button("首页更新提示：" + if (prefs.updateBannerEnabled) "开" else "关") {
             prefs.updateBannerEnabled = !prefs.updateBannerEnabled
             showSetup()
@@ -1257,7 +1281,8 @@ class MainActivity : Activity() {
                 return@button
             }
             api = Api(url)
-            api.restoreCookie(prefs.cookie)
+            api.restoreCookie(prefs.cookie.takeIf { url.trimEnd('/') == prefs.serverUrl.trimEnd('/') })
+            imageLoader.close()
             imageLoader = ImageLoader(api)
             runApi("正在连接…", {
                 val st = api.status()
@@ -2024,7 +2049,9 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
         grid.adapter = resultsAdapter()
+        grid.setSelection(resultsSelection)
         grid.setOnItemClickListener { _, _, pos, _ ->
+            resultsSelection = pos
             resultGroups.getOrNull(pos)?.let { openDetail(it.second.first()) }
         }
         col.addView(grid, LinearLayout.LayoutParams(
@@ -2096,7 +2123,7 @@ class MainActivity : Activity() {
             imageLoader.load(first.pic, dp(120), dp(170)) { bmp ->
                 if (poster.tag == first.pic) poster.setImageBitmap(bmp)
             }
-            cell.setOnClickListener { openDetail(first) }
+            cell.setOnClickListener { resultsSelection = position; openDetail(first) }
             return cell
         }
     }
@@ -2124,7 +2151,7 @@ class MainActivity : Activity() {
             }
         }
     }
-    private fun showHome() {
+    private fun legacySearch() {
         currentScreen = "home"
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2250,13 +2277,36 @@ class MainActivity : Activity() {
         if (lastResults.isEmpty()) keywordField.requestFocus() else listView.requestFocus()
     }
 
+    private fun showHome() = discovery.search()
+    private fun showRecommend() = discovery.home()
+
+    private fun findMedia(media: Media) {
+        val sources = prefs.sources().filter { it.enabled && !it.isAdult }
+        if (sources.isEmpty()) { toast("没有启用的片源"); showSources(); return }
+        runApi("正在为「${media.title}」查找可播放来源…", { api.search(media.title, sources) }, { result ->
+            metadataRepository.ingestSearch(result.items)
+            val matches = result.items.filter { Media.normalized(it.name) == Media.normalized(media.title) && (media.year == null || it.year.toIntOrNull() == media.year) }
+            if (matches.isEmpty()) {
+                toast("已配置片源中没有匹配片名和年份的结果；目录推荐不保证可播")
+                discovery.resume()
+            } else {
+                lastResults = matches
+                openDetail(matches.first())
+            }
+        })
+    }
+
     private fun doSearch(keyword: String) {
-        val kw = keyword.trim()
+        val kw = discovery.resolve(keyword.trim())
         if (kw.isEmpty()) { toast("请输入片名"); return }
         val sources = prefs.sources().filter { it.enabled }
         if (sources.isEmpty()) { toast("没有启用的片源，去「片源管理」开启或添加"); showSources(); return }
         runApi("正在搜索「$kw」（${sources.size} 个源，可能需要几秒）…", {
-            val first = api.search(kw, sources)
+            val cacheKey = api.baseUrl + sources.joinToString { it.url } + kw
+            val cached = synchronized(searchCache) { searchCache[cacheKey]?.takeIf { System.currentTimeMillis() - it.first < 120_000L }?.second }
+            val first = cached ?: api.search(kw, sources).also {
+                synchronized(searchCache) { searchCache[cacheKey] = System.currentTimeMillis() to it; if (searchCache.size > 20) searchCache.remove(searchCache.keys.first()) }
+            }
             // 兜底：豆瓣条目常带「（2023）」「：副标题」这类噪声，采集站匹配不到时再试一次干净片名
             if (first.items.isNotEmpty()) {
                 first
@@ -2267,6 +2317,8 @@ class MainActivity : Activity() {
         }, { result ->
             prefs.addSearchHistory(kw)
             lastResults = result.items
+            resultsSelection = 0
+            metadataRepository.ingestSearch(result.items)
             val failedNote = if (result.failures > 0) "（${result.failures} 个源无响应）" else ""
             if (result.items.isEmpty()) {
                 toast("没有找到结果$failedNote，换个片名或别的源试试")
@@ -2299,6 +2351,7 @@ class MainActivity : Activity() {
     /* --------------------------------------------------------------- 详情页 */
 
     private fun openDetail(item: SearchItem) {
+        if (currentScreen != "detail") detailOrigin = currentScreen
         val source = prefs.sources().firstOrNull { it.url == item.sourceUrl }
             ?: SourceConfig(item.sourceName, item.sourceUrl)
         runApi("正在获取详情…", { api.detail(item.vodId, source) }, { detail ->
@@ -2692,7 +2745,7 @@ class MainActivity : Activity() {
 
     /* ------------------------------------------------------------ 推荐首页 */
 
-    private fun showRecommend() {
+    private fun legacyRecommend() {
         currentScreen = "recommend"
         if (recommendItems.isEmpty()) {
             loadRecommend()
